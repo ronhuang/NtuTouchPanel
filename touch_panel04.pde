@@ -1,9 +1,11 @@
+#include <MsTimer2.h>
+#include <WaveRP.h>
+#include <SdFat.h>
+#include <Sd2Card.h>
 #include <Wire.h>
 #include <avr/pgmspace.h>
-#include <string.h>
-#include <stdio.h>
-#include "util.h"
-#include "MediaPlayer.h"
+#include "freeRam.h"
+#include "PgmPrint.h"
 //AD7746 definitions
 #define I2C_ADDRESS  0x48 //0x90 shift one to the rigth, 0x90 for write, 0x91 for read
 
@@ -27,29 +29,137 @@
 #define VALUE_LOWER_BOUND 0xFL
 #define MAX_OUT_OF_RANGE_COUNT 3
 #define CALIBRATION_INCREASE 1
+
+#define nunPin1 8 // Digital pin to select nunchuck1
+#define nunPin2 9 // Digital pin to select nunchuck2
+
+#define MILLIS_TO_WAIT 5000 // unit in ms.
+
 byte calibration;
 byte outOfRangeCount = 0, outOfRangeCountb=0;
 byte touchState = 0, newState=0, prevState=0; 
-int countA=0, countB=0;
 unsigned long offset = 0;
 int sensorA=0, sensorB=0; //0=no change state, 1= detect touch, 2=remove touch
 int senAstate=LOW,senBstate=LOW;
 int prevdxA=0, prevdxB=0;
 
 long initialValueA[4], initialValueB[4];
-long aveA,aveB=0;
+long aveA=0,aveB=0;
 int progCounter=0;
-
-MediaPlayer mediaPlayer; // create only one object, must be global
-
-uint8_t outbuf1[10];             // array to store nunchuck1 output
-uint8_t outbuf2[10];		// array to store nunchuck2 output
-int cnt = 0;                    // count to make sure 6 bytes are received from nunchuck
-int nunPin1 = 8;                // Digital pin to select nunchuck1
-int nunPin2 = 9;                // Digital pin to select nunchuck2
 
 int state = HIGH;                // keeps tabs on which nunchuck is being read (Low = n1, High = n2)
 
+//------------------------------------------------------------------------------
+// Global variables related to faking sensor data.
+#define HAVE_SENSOR 0
+#if !HAVE_SENSOR
+prog_uchar fakeEventSignals[] PROGMEM = {
+  1, 2, 3, 4, 5, 6, 7, 8, 9
+};
+prog_uint32_t fakeEventIntervals[] PROGMEM = {
+  500, 3000, 3000, 3000, 8000, 3000, 3000, 3000, 3000
+};
+long fakeEventTimeout = -1;
+long fakePreviousMillis = -1;
+unsigned char fakeEventIndex = 0;
+#endif
+
+//------------------------------------------------------------------------------
+// Global variables related to wave files.
+prog_char wave01[] PROGMEM = "HAI-01.WAV";
+prog_char wave02[] PROGMEM = "HAI-02.WAV";
+prog_char wave03[] PROGMEM = "HAI-03.WAV";
+prog_char wave04[] PROGMEM = "HAI-04.WAV";
+prog_char wave05[] PROGMEM = "HAI-05.WAV";
+prog_char wave06[] PROGMEM = "HAI-06.WAV";
+prog_char wave07[] PROGMEM = "HAI-07.WAV";
+prog_char wave08[] PROGMEM = "HAI-08.WAV";
+prog_char wave09[] PROGMEM = "HAI-09.WAV";
+prog_char wave10[] PROGMEM = "HAI-10.WAV";
+PROGMEM const char *waves[] = {
+  wave01, wave02, wave03, wave04, wave05,
+  wave06, wave07, wave08, wave09, wave10
+};
+
+//------------------------------------------------------------------------------
+// Global variables related to log.
+SdFile logger; // log file
+
+//------------------------------------------------------------------------------
+// Global variables related to file system and wave playback.
+Sd2Card card; // SD/SDHC card with support for version 2.00 features
+SdVolume vol; // FAT16 or FAT32 volume
+SdFile root; // volume's root directory
+SdFile file; // current file
+WaveRP wave; // wave file recorder/player
+
+//------------------------------------------------------------------------------
+// Global variables related to timer.
+bool timerStarted = false;
+long actStart = -1;
+long actEnd = -1;
+
+//------------------------------------------------------------------------------
+// print error message and halt
+void error(char *str)
+{
+  PgmPrint("error: ");
+  Serial.println(str);
+  if (card.errorCode()) {
+    PgmPrint("sdError: ");Serial.println(card.errorCode(), HEX);
+    PgmPrint("sdData: ");Serial.println(card.errorData(), HEX);
+  }
+  while(1);
+}
+
+//------------------------------------------------------------------------------
+// play a file
+void playFile(char *name)
+{
+  wave.stop();
+  file.close();
+
+  if (!file.open(root, name)) {
+    PgmPrint("Can't open: ");
+    Serial.println(name);
+    return;
+  }
+  if (!wave.play(file)) {
+    PgmPrint("Can't play: ");Serial.println(name);
+    file.close();
+    return;
+  }
+  PgmPrint("Playing: ");Serial.println(name);
+}
+
+//------------------------------------------------------------------------------
+// play a wave by index
+void playWave(int index)
+{
+  char name[13] = "";
+
+  if (index < 1 || index > 10) return;
+
+  strncpy_P(name, (char *)pgm_read_word(&(waves[index - 1])), sizeof(name));
+  playFile(name);
+}
+
+//------------------------------------------------------------------------------
+// Timer callback
+void timerCb()
+{
+  logger.print(actStart, DEC);
+  logger.print(", ");
+  logger.print(actEnd, DEC);
+  logger.print(", ");
+  logger.println(actEnd - actStart, DEC);
+  logger.sync();
+
+  actStart = actEnd = -1; // Reset.
+}
+
+//------------------------------------------------------------------------------
+// setup
 void setup()
 {
   progCounter=0;
@@ -64,7 +174,7 @@ void setup()
   Wire.begin(); // sets up i2c for operation
   Serial.begin(9600); // set up baud rate for serial
 
-  Serial.println("Initializing");
+  PgmPrintln("Initializing");
 
   Wire.beginTransmission(I2C_ADDRESS); // start i2c cycle
   Wire.send(RESET_ADDRESS); // reset the device
@@ -77,9 +187,13 @@ void setup()
 
   writeRegister(REGISTER_CAP_SETUP,_BV(7)); // cap setup reg - cap enabled
 
-  Serial.println("Getting offset");
+  PgmPrintln("Getting offset");
+#if HAVE_SENSOR
   offset = ((unsigned long)readInteger(REGISTER_CAP_OFFSET)) << 8;  
-  Serial.print("Factory offset: ");
+#else
+  offset = 0;
+#endif
+  PgmPrint("Factory offset: ");
   Serial.println(offset);
 
   writeRegister(REGISTER_CONFIGURATION, _BV(7) | _BV(6) | _BV(5) | _BV(4) | _BV(3) | _BV(2) | _BV(0));  // set configuration to calib. mode, slow sample
@@ -87,9 +201,15 @@ void setup()
   //wait for calibration
   delay(100);
 
+#if HAVE_SENSOR
   displayStatus();
-  Serial.print("Calibrated offset: ");
+#endif
+  PgmPrint("Calibrated offset: ");
+#if HAVE_SENSOR
   offset = ((unsigned long)readInteger(REGISTER_CAP_OFFSET)) << 8;  
+#else
+  offset = 0;
+#endif
   Serial.println(offset);
 
   writeRegister(REGISTER_CAP_SETUP,_BV(7)); // cap setup reg - cap enabled
@@ -98,16 +218,50 @@ void setup()
 
   writeRegister(REGISTER_CONFIGURATION, _BV(7) | _BV(6) | _BV(5) | _BV(4) | _BV(3) | _BV(0)); // continuous mode
 
+#if HAVE_SENSOR
   displayStatus();
+#endif
  calibrate();
 //digitalWrite(nunPin1, HIGH);
 //  digitalWrite(nunPin2, LOW);
 //readValue();
   delay(100);
-  Serial.println("done");
   
+  // Initialize card, FAT and root.
+  if (!card.init()) error("ci");
+  if (!vol.init(card)) error("vi");
+  if (!root.openRoot(vol)) error("or");
+
+  // Search for the filename to log.
+  // Pick the largest number.
+  char name[] = "TS000.LOG";
+  for (int i = 0; i < 1000; i++) {
+    name[2] = (i / 100) + '0';
+    name[3] = (i / 10) % 10 + '0';
+    name[4] = i % 10 + '0';
+    if (logger.create(root, name)) break;
+  }
+  if (!logger.isOpen()) error("lc");
+  PgmPrint("Log filename for this session: ");
+  Serial.println(name);
+
+  // Initialize timer.
+  MsTimer2::set(MILLIS_TO_WAIT, timerCb);
+
+  // Added header for the log file.
+  const char *str = PSTR("Start, End, Duration");
+  for (uint8_t c; (c = pgm_read_byte(str)); str++) logger.print(c);
+  logger.println();
+  logger.sync();
+
+  PgmPrint("FreeRam: ");
+  Serial.println(freeRam());
+
+  PgmPrintln("done");
 }
 
+//------------------------------------------------------------------------------
+// loop
 void loop() // main program begins
 {
 long valueA, valueB;
@@ -117,7 +271,9 @@ int dxA, dxB;
         if (Serial.available() > 0) {
             // read the incoming byte:
            Serial.read();
+#if HAVE_SENSOR
            displayStatus();
+#endif
         }
           
         state_A();
@@ -137,9 +293,9 @@ int dxA, dxB;
           outOfRangeCount=0;
         }
         valueA = map(valueA, 0XFL, 16000000L, 0, 300);
-     //   Serial.print("AverageA:");
+     //   PgmPrint("AverageA:");
      //   Serial.println(aveA);
-       //   Serial.print("ValueA:");
+       //   PgmPrint("ValueA:");
        //   Serial.println(valueA);
       // valueA = map(valueA, 0XFL, 16000000L, 0, 300);
   
@@ -160,9 +316,9 @@ int dxA, dxB;
         outOfRangeCountb=0;
         }
       valueB = map(valueB, 0XFL, 16000000L, 0, 300);  
-    //  Serial.print("AverageB:");
+    //  PgmPrint("AverageB:");
     //  Serial.println(aveB);
-    //  Serial.print("ValueB:");
+    //  PgmPrint("ValueB:");
      // Serial.println(valueB);
   
       dxA = aveA - valueA;
@@ -170,9 +326,9 @@ int dxA, dxB;
       dxB = aveB - valueB;
    //   dxB=0;
       
-   //    Serial.print("dxA values:");
+   //    PgmPrint("dxA values:");
    //    Serial.println(dxA);
-      // Serial.print("dxB values:");
+      // PgmPrint("dxB values:");
       // Serial.println(dxB);    
        
        if(progCounter<20)
@@ -223,7 +379,7 @@ int dxA, dxB;
               (sensorB==1 || (senBstate==HIGH) && sensorB==0)) 
               newState=3;
       else {newState=0;
-          //  Serial.println("No touch detected");
+          //  PgmPrintln("No touch detected");
           }
       
       if((prevState==0)&&(newState==0)){
@@ -231,131 +387,90 @@ int dxA, dxB;
         touchState=0;
       }
       else if((prevState==0)&&(newState==1)){
-        Serial.println("Transition to state 1");
         touchState=1;
       }
       else if((prevState==0)&&(newState==2)){
-        Serial.println("Transition to state 2");
         touchState=2;
       }
       else if((prevState==0)&&(newState==3)){
-        Serial.println("Transition to state 3");
         touchState=3;
       }
       else if((prevState==1)&&(newState==0)){
-        Serial.println("Transition to state 4");
         touchState=4;
       }
       else if((prevState==2)&&(newState==0)){
-        Serial.println("Transition to state 5");
         touchState=5;
       }
       else if((prevState==3)&&(newState==0)){
-        Serial.println("Transition to state 6");
         touchState=6;
       }
       else if((prevState==1)&&(newState==3)){
-        Serial.println("Transition to state 7");
         touchState=7;
       }
       else if((prevState==2)&&(newState==3)){
-        Serial.println("Transition to state 8");
         touchState=8;
       }
       else if((prevState==3)&&(newState==1)){
-        Serial.println("Transition to state 9");
         touchState=9;
       }
       else if((prevState==3)&&(newState==2)){
-        Serial.println("Transition to state 10");
         touchState=10;
       }
       else if(prevState==newState){
-       // Serial.println("No state change detected");
         touchState=0;
       }
      prevState=newState;
     
-    switch (touchState){
-      case 1: 
-        mediaPlayer.stop();
-      //  delay(100);
-      //  Serial.println("Play HAI-01.wav");
-        mediaPlayer.play("HAI-01.WAV");
-      //playComplete("TEO-01.WAV");
-        delay(20);
-        break;
-      case 2: 
-        mediaPlayer.stop();
-      //  delay(100);
-      //  Serial.println("Play HAI-02.wav");
-        mediaPlayer.play("HAI-02.WAV");
-        delay(20);
-        break;
-      case 3:
-        mediaPlayer.stop();
-      //  delay(100);
-      //  Serial.println("Play HAI-03.wav");
-        mediaPlayer.play("HAI-03.WAV");
-        delay(20);
-        break;   
-      case 4: 
-        mediaPlayer.stop();
-      //  delay(100);
-      //  Serial.println("Play HAI-04.wav");
-        mediaPlayer.play("HAI-04.WAV");
-        delay(20);
-        break;
-      case 5:
-        mediaPlayer.stop();
-      //  delay(100);
-      //  Serial.println("Play HAI-05.wav");
-        mediaPlayer.play("HAI-05.WAV");
-        delay(20);
-        break;
-      case 6:
-        mediaPlayer.stop();
-      //  delay(100);
-      //  Serial.println("Play HAI-06.wav");
-        mediaPlayer.play("HAI-06.WAV");
-        delay(20);
-        break;
-      case 7:
-        mediaPlayer.stop();
-      //  delay(100);
-      //  Serial.println("Play HAI-07.wav");
-        mediaPlayer.play("HAI-07.WAV");
-        delay(20);
-        break;
-      case 8:
-        mediaPlayer.stop();
-      //  delay(100);
-      //  Serial.println("Play HAI-08.wav");
-        mediaPlayer.play("HAI-08.WAV");
-        delay(20);
-        break;
-      case 9:
-        mediaPlayer.stop();
-      //  delay(100);
-      //  Serial.println("Play HAI-09.wav");
-        mediaPlayer.play("HAI-09.WAV");
-        delay(20);
-        break;
-      case 10:
-        mediaPlayer.stop();
-      //  delay(100);
-      //  Serial.println("Play HAI-10.wav");
-        mediaPlayer.play("HAI-10.WAV");
-        delay(20);
-        break;
-      default:
-        //Serial.println("Default case");
-        delay(20);
         
+#if !HAVE_SENSOR
+    if (fakeEventTimeout < 0) {
+      fakeEventTimeout = millis() + pgm_read_dword_near(fakeEventIntervals);
+    }
+
+    long currentMillis = millis();
+    if ((fakePreviousMillis < fakeEventTimeout) && (fakeEventTimeout <= currentMillis)) {
+      touchState = pgm_read_byte_near(fakeEventSignals + fakeEventIndex);
+      fakeEventIndex++;
+      fakeEventIndex %= (sizeof(fakeEventSignals) / sizeof(prog_uchar));
+
+      fakeEventTimeout += pgm_read_dword_near(fakeEventIntervals + fakeEventIndex);
+    }
+    else {
+      touchState = 0;
+    }
+    fakePreviousMillis = currentMillis;
+
+    if (touchState) {
+      Serial.print(currentMillis, DEC);
+      PgmPrint("YYY");
+      Serial.println(touchState, DEC);
+    }
+#endif
+
+    if (touchState) {
+      // Stop timer if new audio is about to play.
+      timerStarted = false;
+      MsTimer2::stop();
+
+      if (actStart < 0) {
+        actStart = millis();
+      }
+
+      playWave(touchState);
+      delay(20);
     }
       }
   
+  // Check if there are any new activities from the users.
+  // If not, log it.
+  if (!wave.isPlaying() && !timerStarted) {
+    timerStarted = true;
+    MsTimer2::start();
 
+    actEnd = millis();
+  }
+
+  // Calculate average.
      for(int i=3;i>=1;i--){
        initialValueA[i]=initialValueA[i-1];
        initialValueB[i]=initialValueB[i-1];
@@ -379,7 +494,7 @@ void calibrate (byte direction) {
 void calibrate() {
   calibration = 0;
 
-  Serial.println("Calibrating CapDAC A");
+  PgmPrintln("Calibrating CapDAC A");
 
   long value = readValue();
 
@@ -388,7 +503,7 @@ void calibrate() {
     writeRegister(REGISTER_CAP_DAC_A, _BV(7) | calibration);
     value = readValue();
   }
-  Serial.println("done");
+  PgmPrintln("done");
 }
 
 void
@@ -433,6 +548,7 @@ long readValue() {
   long ret = 0;
 //  uint8_t data[3];
 
+#if HAVE_SENSOR
   char status = 0;
   //wait until a conversion is done
   while (!(status & (_BV(0) | _BV(2)))) {
@@ -445,6 +561,7 @@ long readValue() {
   value >>=8;
   //we have read one byte to much, now we have to get rid of it
   ret =  value;
+#endif
 
   return ret;
 }
