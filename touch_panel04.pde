@@ -51,7 +51,7 @@ int state = HIGH;                // keeps tabs on which nunchuck is being read (
 
 //------------------------------------------------------------------------------
 // Global variables related to faking sensor data.
-#define HAVE_SENSOR 0
+#define HAVE_SENSOR 1
 #if !HAVE_SENSOR
 prog_uchar fakeEventSignals[] PROGMEM = {
   1, 2, 3, 4, 5, 6, 7, 8, 9
@@ -148,6 +148,13 @@ void playWave(int index)
 // Timer callback
 void timerCb()
 {
+  PgmPrint("Logging: ");
+  Serial.print(actStart, DEC);
+  PgmPrint(", ");
+  Serial.print(actEnd, DEC);
+  PgmPrint(", ");
+  Serial.println(actEnd - actStart, DEC);
+
   logger.print(actStart, DEC);
   logger.print(", ");
   logger.print(actEnd, DEC);
@@ -155,7 +162,10 @@ void timerCb()
   logger.println(actEnd - actStart, DEC);
   logger.sync();
 
-  actStart = actEnd = -1; // Reset.
+  // Reset
+  MsTimer2::stop();
+  timerStarted = false;
+  actStart = actEnd = -1;
 }
 
 //------------------------------------------------------------------------------
@@ -330,9 +340,19 @@ int dxA, dxB;
    //    Serial.println(dxA);
       // PgmPrint("dxB values:");
       // Serial.println(dxB);    
-       
-       if(progCounter<20)
-         progCounter++;
+
+      if(progCounter<20) {
+        if (progCounter == 0) {
+          PgmPrint("Waiting to be stable");
+        }
+        else if (progCounter == 19) {
+          PgmPrintln("done");
+        }
+        else {
+          PgmPrint(".");
+        }
+        progCounter++;
+      }
       else{
       //touch classifier
       if( (abs(dxA)>4) && dxA>0 && senAstate==LOW)
@@ -463,7 +483,7 @@ int dxA, dxB;
   
   // Check if there are any new activities from the users.
   // If not, log it.
-  if (!wave.isPlaying() && !timerStarted) {
+  if (!wave.isPlaying() && !timerStarted && actStart > 0) {
     timerStarted = true;
     MsTimer2::start();
 
@@ -494,11 +514,12 @@ void calibrate (byte direction) {
 void calibrate() {
   calibration = 0;
 
-  PgmPrintln("Calibrating CapDAC A");
+  PgmPrint("Calibrating CapDAC A");
 
   long value = readValue();
 
   while (value>VALUE_UPPER_BOUND && calibration < 128) {
+    PgmPrint(".");
     calibration++;
     writeRegister(REGISTER_CAP_DAC_A, _BV(7) | calibration);
     value = readValue();
