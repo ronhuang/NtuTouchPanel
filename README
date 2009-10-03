@@ -1,0 +1,76 @@
+Log filename rules
+==================
+
+Every time the system boots up, a new log file will be created. The
+filename will be TSxxx.LOG, where xxx ranges from 000 to 999. Upon
+boot up, the system will scan the SD card and look for the next
+available number, starting from 0.
+
+So for example, if the card has no existing log file, TS000.LOG will
+be created. If the SD card already contains TS000.LOG, TS001.LOG and
+TS002.LOG, then TS003.LOG will be created. If all the logs on the SD
+card are deleted, it will start from TS000.LOG again.
+
+The reason for having only 3-digit number is that the underneath
+filesystem only support at most 512 files in one single folder.
+
+Log file format
+===============
+
+A sample of the log file content:
+
+Start, End, Duration
+4081, 14545, 10464
+21035, 44065, 23030
+
+It's an ordinary CSV (comma-seperated values) file. The first line
+contains the column names. The following lines are the actual
+data. Each line represents a unique user activity (more on this in the
+next section.) The first column is the starting time of this user
+activity. The second column is ending time of this user activity. The
+third column is the duration of this user activity (ending time -
+starting time.) The unit of these columns are all in milliseconds
+since the system boot up.
+
+So for the above example, the first user activity started approximately
+at 0:04.1 and ended at 0:14.5, lasted about 10 seconds. The second
+user activity started at 0:21 and ended at 0:44.1, lasted for 23 seconds.
+
+User activity
+=============
+
+An user activity is defined as a consecutive of interactions between
+the user and the touch panel. An interaction is defined as when the
+user touch the touch panel or when the user remove the hand from the
+touch panel. For an interaction to be considered as consecutive, it
+must be initiated within 5 seconds after the audio of the previous
+interaction ends.
+
+The starting time of an user activity is at the time of the first
+interaction. The ending time of an user activity is at the time of the
+last interaction, not at the time when the audio ends or 5 seconds
+after that.
+
+The following time line will produce the sample log file in the
+previous section.
+
+|----|--|----|----|-|-----|-|--|------------|----|-----|--|-----|--------------
+^    ^  ^    ^    ^ ^     ^ ^  ^            ^    ^     ^  ^     ^
+|    |  |    |    | |     | |  |            |    |     |  |     |> (Log)
+|    |  |    |    | |     | |  |            |    |     |  |> (Audio ends at 0:46)
+|    |  |    |    | |     | |  |            |    |     |> User B removes hand
+|    |  |    |    | |     | |  |            |    |        from panel at 0:44
+|    |  |    |    | |     | |  |            |    |> User B touches panel at 0:39
+|    |  |    |    | |     | |  |            |> (Audio ends at 0:35)
+|    |  |    |    | |     | |  |> User B removes hand from panel at 0:23
+|    |  |    |    | |     | |> User B touches panel at 0:21
+|    |  |    |    | |     |
+|    |  |    |    | |     |
+|    |  |    |    | |     |> (No more consecutive interactions,
+|    |  |    |    | |        log this user activity.)
+|    |  |    |    | |> (Audio ends at 0:15)
+|    |  |    |    |> User A removes hand from panel at 0:14
+|    |  |    |> User A touchs panel at 0:10
+|    |  |> User A removes hand from panel at 0:06
+|    |> User A touchs panel at 0:04
+|> System boot up at 0:00
