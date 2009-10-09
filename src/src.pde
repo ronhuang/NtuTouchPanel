@@ -8,7 +8,9 @@
 #include "PgmPrint.h"
 
 #include "TpConf.h"
+#include "TpConst.h"
 #include "TpAudio.h"
+#include "TpValue.h"
 
 //AD7746 definitions
 #define I2C_ADDRESS  0x48 //0x90 shift one to the rigth, 0x90 for write, 0x91 for read
@@ -46,7 +48,7 @@ int sensorA=0, sensorB=0; //0=no change state, 1= detect touch, 2=remove touch
 int senAstate=LOW,senBstate=LOW;
 int prevdxA=0, prevdxB=0;
 
-long initialValueA[4], initialValueB[4];
+long initialValueA[TP_VALUE_COUNT], initialValueB[TP_VALUE_COUNT];
 long aveA=0,aveB=0;
 int progCounter=0;
 
@@ -163,17 +165,14 @@ void setup()
   pinMode(nunPin2, OUTPUT);
   digitalWrite(nunPin1, HIGH);
   digitalWrite(nunPin2, HIGH);
-  for(int i=0;i<4;i++){
-    initialValueA[i]=0;
-    initialValueB[i]=0;
-  }
+  tpValueInit(initialValueA, initialValueB);
   Wire.begin(); // sets up i2c for operation
   Serial.begin(9600); // set up baud rate for serial
 
   PgmPrintln("Initializing");
 
   PgmPrint("Using panel: ");
-  Serial.println(PANEL_NUMBER);
+  Serial.println(TP_PANEL_NUMBER);
 
   Wire.beginTransmission(I2C_ADDRESS); // start i2c cycle
   Wire.send(RESET_ADDRESS); // reset the device
