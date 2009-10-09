@@ -274,172 +274,172 @@ void setup()
 // loop
 void loop() // main program begins
 {
-long valueA, valueB;
-int dxA, dxB;
+  long valueA, valueB;
+  int dxA, dxB;
 
-          // if we recieve date we print out the status
-        if (Serial.available() > 0) {
-            // read the incoming byte:
-           Serial.read();
+  // if we recieve date we print out the status
+  if (Serial.available() > 0) {
+    // read the incoming byte:
+    Serial.read();
 #if HAVE_SENSOR
-           displayStatus();
+    displayStatus();
 #endif
-        }
+  }
           
-        state_A();
-        delay(20);
-        valueA = readValue();
-        delay(50);
-        if ((valueA<VALUE_LOWER_BOUND) or (valueA>VALUE_UPPER_BOUND)) {
-          outOfRangeCount++;
-        }
-        if (outOfRangeCount>MAX_OUT_OF_RANGE_COUNT) {
-          if (valueA < VALUE_LOWER_BOUND) {
-            calibrate(-CALIBRATION_INCREASE);
-          } 
-          else {
-            calibrate(CALIBRATION_INCREASE);
-          }
-          outOfRangeCount=0;
-        }
-        valueA = map(valueA, 0XFL, 16000000L, 0, 300);
-     //   PgmPrint("AverageA:");
-     //   Serial.println(aveA);
-       //   PgmPrint("ValueA:");
-       //   Serial.println(valueA);
-      // valueA = map(valueA, 0XFL, 16000000L, 0, 300);
+  state_A();
+  delay(20);
+  valueA = readValue();
+  delay(50);
+  if ((valueA<VALUE_LOWER_BOUND) or (valueA>VALUE_UPPER_BOUND)) {
+    outOfRangeCount++;
+  }
+  if (outOfRangeCount>MAX_OUT_OF_RANGE_COUNT) {
+    if (valueA < VALUE_LOWER_BOUND) {
+      calibrate(-CALIBRATION_INCREASE);
+    } 
+    else {
+      calibrate(CALIBRATION_INCREASE);
+    }
+    outOfRangeCount=0;
+  }
+  valueA = map(valueA, 0XFL, 16000000L, 0, 300);
+  //   PgmPrint("AverageA:");
+  //   Serial.println(aveA);
+  //   PgmPrint("ValueA:");
+  //   Serial.println(valueA);
+  // valueA = map(valueA, 0XFL, 16000000L, 0, 300);
   
-       state_B();
-       delay(20);
-       valueB = readValue();
-       delay(50);
-       if ((valueB<VALUE_LOWER_BOUND) or (valueB>VALUE_UPPER_BOUND)) {
-        outOfRangeCountb++;
-        }
-       if (outOfRangeCountb>MAX_OUT_OF_RANGE_COUNT) {
-          if (valueB < VALUE_LOWER_BOUND) {
-            calibrate(-CALIBRATION_INCREASE);
-        } 
-        else {
-          calibrate(CALIBRATION_INCREASE);
-        }
-        outOfRangeCountb=0;
-        }
-      valueB = map(valueB, 0XFL, 16000000L, 0, 300);  
-    //  PgmPrint("AverageB:");
-    //  Serial.println(aveB);
-    //  PgmPrint("ValueB:");
-     // Serial.println(valueB);
+  state_B();
+  delay(20);
+  valueB = readValue();
+  delay(50);
+  if ((valueB<VALUE_LOWER_BOUND) or (valueB>VALUE_UPPER_BOUND)) {
+    outOfRangeCountb++;
+  }
+  if (outOfRangeCountb>MAX_OUT_OF_RANGE_COUNT) {
+    if (valueB < VALUE_LOWER_BOUND) {
+      calibrate(-CALIBRATION_INCREASE);
+    } 
+    else {
+      calibrate(CALIBRATION_INCREASE);
+    }
+    outOfRangeCountb=0;
+  }
+  valueB = map(valueB, 0XFL, 16000000L, 0, 300);  
+  //  PgmPrint("AverageB:");
+  //  Serial.println(aveB);
+  //  PgmPrint("ValueB:");
+  // Serial.println(valueB);
   
-      dxA = aveA - valueA;
-   // dxA=0;
-      dxB = aveB - valueB;
-   //   dxB=0;
+  dxA = aveA - valueA;
+  // dxA=0;
+  dxB = aveB - valueB;
+  //   dxB=0;
       
-   //    PgmPrint("dxA values:");
-   //    Serial.println(dxA);
-      // PgmPrint("dxB values:");
-      // Serial.println(dxB);    
+  //    PgmPrint("dxA values:");
+  //    Serial.println(dxA);
+  // PgmPrint("dxB values:");
+  // Serial.println(dxB);    
 
-      if(progCounter<20) {
-        if (progCounter == 0) {
-          PgmPrint("Waiting to be stable");
-        }
-        else if (progCounter == 19) {
-          PgmPrintln("done");
-        }
-        else {
-          PgmPrint(".");
-        }
-        progCounter++;
-      }
-      else{
-      //touch classifier
-      if( (abs(dxA)>4) && dxA>0 && senAstate==LOW)
+  if(progCounter<20) {
+    if (progCounter == 0) {
+      PgmPrint("Waiting to be stable");
+    }
+    else if (progCounter == 19) {
+      PgmPrintln("done");
+    }
+    else {
+      PgmPrint(".");
+    }
+    progCounter++;
+  }
+  else{
+    //touch classifier
+    if( (abs(dxA)>4) && dxA>0 && senAstate==LOW)
       {
         if(prevdxA>3){
           sensorA=1;
           senAstate=HIGH;
         }
       }
-      else if((abs(dxA)>4)&& dxA<0 && senAstate==HIGH)
+    else if((abs(dxA)>4)&& dxA<0 && senAstate==HIGH)
       {
         if(prevdxA<-3){
-        sensorA=2; //remove touch
-        senAstate=LOW;
+          sensorA=2; //remove touch
+          senAstate=LOW;
         }
       }
-      else sensorA=0; //no change
+    else sensorA=0; //no change
       
-      if( (abs(dxB)>4) && dxB>0 && senBstate==LOW)
+    if( (abs(dxB)>4) && dxB>0 && senBstate==LOW)
       {
         if(prevdxB>3)
-        {
-          sensorB=1; //detect touch
-          senBstate=HIGH;
-        }
+          {
+            sensorB=1; //detect touch
+            senBstate=HIGH;
+          }
       }
-      else if((abs(dxB)>3)&& dxB<0 && senBstate==HIGH)
+    else if((abs(dxB)>3)&& dxB<0 && senBstate==HIGH)
       {
         if(prevdxB<-3)
-        {
-          sensorB=2; //remove touch
-          senBstate=LOW;
-        }
-      }
-      else sensorB=0; //no change
-      
-      if((sensorA==1 ||( sensorA==0 && senAstate==HIGH )) && 
-      ((senBstate==LOW && sensorB==0) || (sensorB==2)))
-         newState=1;
-      else if((sensorB==1 ||( sensorB==0 && senBstate==HIGH )) && 
-      ((senAstate==LOW && sensorA==0) || (sensorA==2))) 
-        newState=2;
-      else if((sensorA==1 || (senAstate==HIGH) && sensorA==0) &&
-              (sensorB==1 || (senBstate==HIGH) && sensorB==0)) 
-              newState=3;
-      else {newState=0;
-          //  PgmPrintln("No touch detected");
+          {
+            sensorB=2; //remove touch
+            senBstate=LOW;
           }
+      }
+    else sensorB=0; //no change
       
-      if((prevState==0)&&(newState==0)){
-        //Serial.println("Transition state 0");
-        touchState=0;
-      }
-      else if((prevState==0)&&(newState==1)){
-        touchState=1;
-      }
-      else if((prevState==0)&&(newState==2)){
-        touchState=2;
-      }
-      else if((prevState==0)&&(newState==3)){
-        touchState=3;
-      }
-      else if((prevState==1)&&(newState==0)){
-        touchState=4;
-      }
-      else if((prevState==2)&&(newState==0)){
-        touchState=5;
-      }
-      else if((prevState==3)&&(newState==0)){
-        touchState=6;
-      }
-      else if((prevState==1)&&(newState==3)){
-        touchState=7;
-      }
-      else if((prevState==2)&&(newState==3)){
-        touchState=8;
-      }
-      else if((prevState==3)&&(newState==1)){
-        touchState=9;
-      }
-      else if((prevState==3)&&(newState==2)){
-        touchState=10;
-      }
-      else if(prevState==newState){
-        touchState=0;
-      }
-     prevState=newState;
+    if((sensorA==1 ||( sensorA==0 && senAstate==HIGH )) && 
+       ((senBstate==LOW && sensorB==0) || (sensorB==2)))
+      newState=1;
+    else if((sensorB==1 ||( sensorB==0 && senBstate==HIGH )) && 
+            ((senAstate==LOW && sensorA==0) || (sensorA==2))) 
+      newState=2;
+    else if((sensorA==1 || (senAstate==HIGH) && sensorA==0) &&
+            (sensorB==1 || (senBstate==HIGH) && sensorB==0)) 
+      newState=3;
+    else {newState=0;
+      //  PgmPrintln("No touch detected");
+    }
+      
+    if((prevState==0)&&(newState==0)){
+      //Serial.println("Transition state 0");
+      touchState=0;
+    }
+    else if((prevState==0)&&(newState==1)){
+      touchState=1;
+    }
+    else if((prevState==0)&&(newState==2)){
+      touchState=2;
+    }
+    else if((prevState==0)&&(newState==3)){
+      touchState=3;
+    }
+    else if((prevState==1)&&(newState==0)){
+      touchState=4;
+    }
+    else if((prevState==2)&&(newState==0)){
+      touchState=5;
+    }
+    else if((prevState==3)&&(newState==0)){
+      touchState=6;
+    }
+    else if((prevState==1)&&(newState==3)){
+      touchState=7;
+    }
+    else if((prevState==2)&&(newState==3)){
+      touchState=8;
+    }
+    else if((prevState==3)&&(newState==1)){
+      touchState=9;
+    }
+    else if((prevState==3)&&(newState==2)){
+      touchState=10;
+    }
+    else if(prevState==newState){
+      touchState=0;
+    }
+    prevState=newState;
     
         
 #if !HAVE_SENSOR
@@ -479,7 +479,7 @@ int dxA, dxB;
       playWave(touchState);
       delay(20);
     }
-      }
+  }
   
   // Check if there are any new activities from the users.
   // If not, log it.
@@ -491,16 +491,16 @@ int dxA, dxB;
   }
 
   // Calculate average.
-     for(int i=3;i>=1;i--){
-       initialValueA[i]=initialValueA[i-1];
-       initialValueB[i]=initialValueB[i-1];
-     }
-     initialValueA[0]=valueA;
-     initialValueB[0]=valueB; 
-     prevdxA=dxA;
-     prevdxB=dxB;
-     aveA = (initialValueA[0]+initialValueA[1]+initialValueA[2]+initialValueA[3])/4;
-     aveB = (initialValueB[0]+initialValueB[1]+initialValueB[2]+initialValueB[3])/4;
+  for(int i=3;i>=1;i--){
+    initialValueA[i]=initialValueA[i-1];
+    initialValueB[i]=initialValueB[i-1];
+  }
+  initialValueA[0]=valueA;
+  initialValueB[0]=valueB; 
+  prevdxA=dxA;
+  prevdxB=dxB;
+  aveA = (initialValueA[0]+initialValueA[1]+initialValueA[2]+initialValueA[3])/4;
+  aveB = (initialValueB[0]+initialValueB[1]+initialValueB[2]+initialValueB[3])/4;
  
 }
 
