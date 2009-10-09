@@ -7,6 +7,9 @@
 #include "freeRam.h"
 #include "PgmPrint.h"
 
+#include "TpConf.h"
+#include "TpAudio.h"
+
 //AD7746 definitions
 #define I2C_ADDRESS  0x48 //0x90 shift one to the rigth, 0x90 for write, 0x91 for read
 
@@ -63,23 +66,6 @@ long fakeEventTimeout = -1;
 long fakePreviousMillis = -1;
 unsigned char fakeEventIndex = 0;
 #endif
-
-//------------------------------------------------------------------------------
-// Global variables related to wave files.
-prog_char wave01[] PROGMEM = "HAI-01.WAV";
-prog_char wave02[] PROGMEM = "HAI-02.WAV";
-prog_char wave03[] PROGMEM = "HAI-03.WAV";
-prog_char wave04[] PROGMEM = "HAI-04.WAV";
-prog_char wave05[] PROGMEM = "HAI-05.WAV";
-prog_char wave06[] PROGMEM = "HAI-06.WAV";
-prog_char wave07[] PROGMEM = "HAI-07.WAV";
-prog_char wave08[] PROGMEM = "HAI-08.WAV";
-prog_char wave09[] PROGMEM = "HAI-09.WAV";
-prog_char wave10[] PROGMEM = "HAI-10.WAV";
-PROGMEM const char *waves[] = {
-  wave01, wave02, wave03, wave04, wave05,
-  wave06, wave07, wave08, wave09, wave10
-};
 
 //------------------------------------------------------------------------------
 // Global variables related to log.
@@ -140,7 +126,7 @@ void playWave(int index)
 
   if (index < 1 || index > 10) return;
 
-  strncpy_P(name, (char *)pgm_read_word(&(waves[index - 1])), sizeof(name));
+  strncpy_P(name, (char *)pgm_read_word(&(TP_WAVES[index - 1])), sizeof(name));
   playFile(name);
 }
 
@@ -185,6 +171,9 @@ void setup()
   Serial.begin(9600); // set up baud rate for serial
 
   PgmPrintln("Initializing");
+
+  PgmPrint("Using panel: ");
+  Serial.println(PANEL_NUMBER);
 
   Wire.beginTransmission(I2C_ADDRESS); // start i2c cycle
   Wire.send(RESET_ADDRESS); // reset the device
