@@ -1,6 +1,7 @@
 #include "TpConf.h"
 #include "TpConst.h"
 #include "TpValue.h"
+#include "WProgram.h" // for map()
 
 long initialValueA[TP_VALUE_COUNT], initialValueB[TP_VALUE_COUNT];
 
@@ -55,7 +56,7 @@ long tpValueMappingB(long value)
 #elif TP_PANEL_NUMBER == 2
 #elif TP_PANEL_NUMBER == 3
 #elif TP_PANEL_NUMBER == 4
-  return map(valueB, 0XFL, 16000000L, 0, 300);
+  return map(value, 0XFL, 16000000L, 0, 300);
 #elif TP_PANEL_NUMBER == 5
 #elif TP_PANEL_NUMBER == 6
 #elif TP_PANEL_NUMBER == 7
