@@ -290,7 +290,7 @@ void loop() // main program begins
     }
     outOfRangeCount=0;
   }
-  valueA = map(valueA, 0XFL, 16000000L, 0, 300);
+  valueA = tpValueMappingA(valueA);
   // PgmPrint("AverageA:");
   // Serial.println(aveA);
   // PgmPrint("ValueA:");
@@ -312,7 +312,7 @@ void loop() // main program begins
     }
     outOfRangeCountb=0;
   }
-  valueB = map(valueB, 0XFL, 16000000L, 0, 300);
+  valueB = tpValueMappingB(valueB);
   // PgmPrint("AverageB:");
   // Serial.println(aveB);
   // PgmPrint("ValueB:");
