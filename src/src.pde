@@ -342,33 +342,33 @@ void loop() // main program begins
   }
   else{
     //touch classifier
-    if( (abs(dxA)>4) && dxA>0 && senAstate==LOW)
+    if( (abs(dxA)>TP_THRESHOLD_DXA_U) && dxA>0 && senAstate==LOW)
       {
-        if(prevdxA>3){
+        if(prevdxA>TP_THRESHOLD_PREVDXA_U){
           sensorA=1;
           senAstate=HIGH;
         }
       }
-    else if((abs(dxA)>4)&& dxA<0 && senAstate==HIGH)
+    else if((abs(dxA)>TP_THRESHOLD_DXA_L)&& dxA<0 && senAstate==HIGH)
       {
-        if(prevdxA<-3){
+        if(prevdxA<TP_THRESHOLD_PREVDXA_L){
           sensorA=2; //remove touch
           senAstate=LOW;
         }
       }
     else sensorA=0; //no change
 
-    if( (abs(dxB)>4) && dxB>0 && senBstate==LOW)
+    if( (abs(dxB)>TP_THRESHOLD_DXB_U) && dxB>0 && senBstate==LOW)
       {
-        if(prevdxB>3)
+        if(prevdxB>TP_THRESHOLD_PREVDXB_U)
           {
             sensorB=1; //detect touch
             senBstate=HIGH;
           }
       }
-    else if((abs(dxB)>3)&& dxB<0 && senBstate==HIGH)
+    else if((abs(dxB)>TP_THRESHOLD_DXB_L)&& dxB<0 && senBstate==HIGH)
       {
-        if(prevdxB<-3)
+        if(prevdxB<TP_THRESHOLD_PREVDXB_L)
           {
             sensorB=2; //remove touch
             senBstate=LOW;
