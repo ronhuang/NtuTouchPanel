@@ -46,10 +46,10 @@ byte touchState = 0, newState=0, prevState=0;
 unsigned long offset = 0;
 int sensorA=0, sensorB=0; //0=no change state, 1= detect touch, 2=remove touch
 int senAstate=LOW,senBstate=LOW;
-int prevdxA=0, prevdxB=0;
 
-long initialValueA[TP_VALUE_COUNT], initialValueB[TP_VALUE_COUNT];
+int prevdxA=0, prevdxB=0;
 long aveA=0,aveB=0;
+
 int progCounter=0;
 
 int state = HIGH; // keeps tabs on which nunchuck is being read (Low = n1, High = n2)
@@ -165,7 +165,7 @@ void setup()
   pinMode(nunPin2, OUTPUT);
   digitalWrite(nunPin1, HIGH);
   digitalWrite(nunPin2, HIGH);
-  tpValueInit(initialValueA, initialValueB);
+  tpValueInit();
   Wire.begin(); // sets up i2c for operation
   Serial.begin(9600); // set up baud rate for serial
 
@@ -477,16 +477,10 @@ void loop() // main program begins
   }
 
   // Calculate average.
-  for(int i=3;i>=1;i--){
-    initialValueA[i]=initialValueA[i-1];
-    initialValueB[i]=initialValueB[i-1];
-  }
-  initialValueA[0]=valueA;
-  initialValueB[0]=valueB;
-  prevdxA=dxA;
-  prevdxB=dxB;
-  aveA = (initialValueA[0]+initialValueA[1]+initialValueA[2]+initialValueA[3])/4;
-  aveB = (initialValueB[0]+initialValueB[1]+initialValueB[2]+initialValueB[3])/4;
+  tpValueCalculateAverage(valueA, valueB, aveA, aveB);
+
+  prevdxA = dxA;
+  prevdxB = dxB;
 }
 
 //------------------------------------------------------------------------------
