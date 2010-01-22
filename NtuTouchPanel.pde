@@ -2,14 +2,12 @@
 #include <WaveRP.h>
 #include <SdFat.h>
 #include <Sd2Card.h>
-#include <Wire.h>
 #include <avr/pgmspace.h>
 #include "freeRam.h"
 #include "PgmPrint.h"
 
 #include "TpConf.h"
 #include "TpConst.h"
-#include "TpValue.h"
 
 //AD7746 definitions
 #define I2C_ADDRESS  0x48 //0x90 shift one to the rigth, 0x90 for write, 0x91 for read
@@ -37,17 +35,15 @@
 #define nunPin1 8 // Digital pin to select nunchuck1
 #define nunPin2 9 // Digital pin to select nunchuck2
 
+#define SENSOR_PIN_A 13
+#define SENSOR_PIN_B 12
+
 #define MILLIS_TO_WAIT 5000 // unit in ms.
 
-byte calibration;
-byte outOfRangeCount = 0, outOfRangeCountb=0;
 byte touchState = 0, newState=0, prevState=0;
-unsigned long offset = 0;
 int sensorA=0, sensorB=0; //0=no change state, 1= detect touch, 2=remove touch
 int senAstate=LOW,senBstate=LOW;
-
-int prevdxA=0, prevdxB=0;
-long aveA=0,aveB=0;
+int prevValueA=0, prevValueB=0;
 
 int progCounter=0;
 
@@ -259,12 +255,10 @@ void timerCb()
 void setup()
 {
   progCounter=0;
-  pinMode(nunPin1, OUTPUT);
-  pinMode(nunPin2, OUTPUT);
-  digitalWrite(nunPin1, HIGH);
-  digitalWrite(nunPin2, HIGH);
-  tpValueInit();
-  Wire.begin(); // sets up i2c for operation
+
+  pinMode(SENSOR_PIN_A, INPUT);
+  pinMode(SENSOR_PIN_B, INPUT);
+
   Serial.begin(9600); // set up baud rate for serial
 
   PgmPrintln("Initializing");
@@ -272,56 +266,8 @@ void setup()
   PgmPrint("Using panel: ");
   Serial.println(TP_PANEL_NUMBER);
 
-  Wire.beginTransmission(I2C_ADDRESS); // start i2c cycle
-  Wire.send(RESET_ADDRESS); // reset the device
-  Wire.endTransmission(); // ends i2c cycle
-
   //wait a tad for reboot
   delay(10);
-
-  writeRegister(REGISTER_EXC_SETUP,  _BV(3) | _BV(1) | _BV(0)); // EXC source A & source B
-
-  writeRegister(REGISTER_CAP_SETUP,_BV(7)); // cap setup reg - cap enabled
-
-  PgmPrintln("Getting offset");
-#if HAVE_SENSOR
-  offset = ((unsigned long)readInteger(REGISTER_CAP_OFFSET)) << 8;
-#else
-  offset = 0;
-#endif
-  PgmPrint("Factory offset: ");
-  Serial.println(offset);
-
-  writeRegister(REGISTER_CONFIGURATION, _BV(7) | _BV(6) | _BV(5) | _BV(4) | _BV(3) | _BV(2) | _BV(0));  // set configuration to calib. mode, slow sample
-
-  //wait for calibration
-  delay(100);
-
-#if HAVE_SENSOR
-  displayStatus();
-#endif
-  PgmPrint("Calibrated offset: ");
-#if HAVE_SENSOR
-  offset = ((unsigned long)readInteger(REGISTER_CAP_OFFSET)) << 8;
-#else
-  offset = 0;
-#endif
-  Serial.println(offset);
-
-  writeRegister(REGISTER_CAP_SETUP,_BV(7)); // cap setup reg - cap enabled
-
-  writeRegister(REGISTER_EXC_SETUP, _BV(3)); // EXC source A
-
-  writeRegister(REGISTER_CONFIGURATION, _BV(7) | _BV(6) | _BV(5) | _BV(4) | _BV(3) | _BV(0)); // continuous mode
-
-#if HAVE_SENSOR
-  displayStatus();
-#endif
-  calibrate();
-  //digitalWrite(nunPin1, HIGH);
-  //  digitalWrite(nunPin2, LOW);
-  //readValue();
-  delay(100);
 
   // Initialize card, FAT and root.
   if (!card.init()) error("ci");
@@ -361,71 +307,14 @@ void setup()
 void loop() // main program begins
 {
   long valueA, valueB;
-  int dxA, dxB;
 
-  // if we recieve date we print out the status
+  // if we recieve data we do nothing
   if (Serial.available() > 0) {
     // read the incoming byte:
     Serial.read();
-#if HAVE_SENSOR
-    displayStatus();
-#endif
   }
 
-  state_A();
-  delay(20);
-  valueA = readValue();
-  delay(50);
-  if ((valueA<VALUE_LOWER_BOUND) or (valueA>VALUE_UPPER_BOUND)) {
-    outOfRangeCount++;
-  }
-  if (outOfRangeCount>MAX_OUT_OF_RANGE_COUNT) {
-    if (valueA < VALUE_LOWER_BOUND) {
-      calibrate(-CALIBRATION_INCREASE);
-    }
-    else {
-      calibrate(CALIBRATION_INCREASE);
-    }
-    outOfRangeCount=0;
-  }
-  valueA = tpValueMappingA(valueA);
-  // PgmPrint("AverageA:");
-  // Serial.println(aveA);
-  // PgmPrint("ValueA:");
-  // Serial.println(valueA);
-
-  state_B();
-  delay(20);
-  valueB = readValue();
-  delay(50);
-  if ((valueB<VALUE_LOWER_BOUND) or (valueB>VALUE_UPPER_BOUND)) {
-    outOfRangeCountb++;
-  }
-  if (outOfRangeCountb>MAX_OUT_OF_RANGE_COUNT) {
-    if (valueB < VALUE_LOWER_BOUND) {
-      calibrate(-CALIBRATION_INCREASE);
-    }
-    else {
-      calibrate(CALIBRATION_INCREASE);
-    }
-    outOfRangeCountb=0;
-  }
-  valueB = tpValueMappingB(valueB);
-  // PgmPrint("AverageB:");
-  // Serial.println(aveB);
-  // PgmPrint("ValueB:");
-  // Serial.println(valueB);
-
-  dxA = aveA - valueA;
-  // dxA=0;
-  dxB = aveB - valueB;
-  // dxB=0;
-
-  // PgmPrint("dxA values:");
-  // Serial.println(dxA);
-  // PgmPrint("dxB values:");
-  // Serial.println(dxB);
-
+  // wait for stable
   if(progCounter<20) {
     if (progCounter == 0) {
       PgmPrint("Waiting to be stable");
@@ -437,132 +326,135 @@ void loop() // main program begins
       PgmPrint(".");
     }
     progCounter++;
+    return;
   }
-  else{
-    //touch classifier
-    if( (abs(dxA)>TP_THRESHOLD_DXA_U) && dxA>0 && senAstate==LOW)
-      {
-        if(prevdxA>TP_THRESHOLD_PREVDXA_U){
-          sensorA=1;
-          senAstate=HIGH;
-        }
-      }
-    else if((abs(dxA)>TP_THRESHOLD_DXA_L)&& dxA<0 && senAstate==HIGH)
-      {
-        if(prevdxA<TP_THRESHOLD_PREVDXA_L){
-          sensorA=2; //remove touch
-          senAstate=LOW;
-        }
-      }
-    else sensorA=0; //no change
 
-    if( (abs(dxB)>TP_THRESHOLD_DXB_U) && dxB>0 && senBstate==LOW)
-      {
-        if(prevdxB>TP_THRESHOLD_PREVDXB_U)
-          {
-            sensorB=1; //detect touch
-            senBstate=HIGH;
-          }
-      }
-    else if((abs(dxB)>TP_THRESHOLD_DXB_L)&& dxB<0 && senBstate==HIGH)
-      {
-        if(prevdxB<TP_THRESHOLD_PREVDXB_L)
-          {
-            sensorB=2; //remove touch
-            senBstate=LOW;
-          }
-      }
-    else sensorB=0; //no change
+  // read values
+  valueA = digitalRead(SENSOR_PIN_A); // active low
+  valueB = digitalRead(SENSOR_PIN_B); // active low
 
-    if((sensorA==1 ||( sensorA==0 && senAstate==HIGH )) &&
-       ((senBstate==LOW && sensorB==0) || (sensorB==2)))
-      newState=1;
-    else if((sensorB==1 ||( sensorB==0 && senBstate==HIGH )) &&
-            ((senAstate==LOW && sensorA==0) || (sensorA==2)))
-      newState=2;
-    else if((sensorA==1 || (senAstate==HIGH) && sensorA==0) &&
-            (sensorB==1 || (senBstate==HIGH) && sensorB==0))
-      newState=3;
-    else {newState=0;
-      //  PgmPrintln("No touch detected");
+  // touch classifier
+  if (valueA == LOW && senAstate == LOW) {
+    if (prevValueA == LOW) {
+      sensorA = 1; // detect touch
+      senAstate = HIGH;
     }
+  }
+  else if (valueA == HIGH && senAstate == HIGH) {
+    if (prevValueA == HIGH) {
+      sensorA = 2; // remove touch
+      senAstate = LOW;
+    }
+  }
+  else {
+    sensorA = 0; // no change
+  }
 
-    if((prevState==0)&&(newState==0)){
-      //Serial.println("Transition state 0");
-      touchState=0;
+  if (valueB == LOW && senBstate == LOW) {
+    if (prevValueB == LOW) {
+      sensorB = 1; // detect touch
+      senBstate = HIGH;
     }
-    else if((prevState==0)&&(newState==1)){
-      touchState=1;
+  }
+  else if (valueB == HIGH && senBstate == HIGH) {
+    if (prevValueB == HIGH) {
+      sensorB = 2; // remove touch
+      senBstate = LOW;
     }
-    else if((prevState==0)&&(newState==2)){
-      touchState=2;
-    }
-    else if((prevState==0)&&(newState==3)){
-      touchState=3;
-    }
-    else if((prevState==1)&&(newState==0)){
-      touchState=4;
-    }
-    else if((prevState==2)&&(newState==0)){
-      touchState=5;
-    }
-    else if((prevState==3)&&(newState==0)){
-      touchState=6;
-    }
-    else if((prevState==1)&&(newState==3)){
-      touchState=7;
-    }
-    else if((prevState==2)&&(newState==3)){
-      touchState=8;
-    }
-    else if((prevState==3)&&(newState==1)){
-      touchState=9;
-    }
-    else if((prevState==3)&&(newState==2)){
-      touchState=10;
-    }
-    else if(prevState==newState){
-      touchState=0;
-    }
-    prevState=newState;
+  }
+  else {
+    sensorB = 0; // no change
+  }
+
+  // Classify touch state.
+  if((sensorA==1 ||( sensorA==0 && senAstate==HIGH )) &&
+     ((senBstate==LOW && sensorB==0) || (sensorB==2)))
+    newState=1;
+  else if((sensorB==1 ||( sensorB==0 && senBstate==HIGH )) &&
+          ((senAstate==LOW && sensorA==0) || (sensorA==2)))
+    newState=2;
+  else if((sensorA==1 || (senAstate==HIGH) && sensorA==0) &&
+          (sensorB==1 || (senBstate==HIGH) && sensorB==0))
+    newState=3;
+  else {newState=0;
+    //  PgmPrintln("No touch detected");
+  }
+
+  if((prevState==0)&&(newState==0)){
+    //Serial.println("Transition state 0");
+    touchState=0;
+  }
+  else if((prevState==0)&&(newState==1)){
+    touchState=1;
+  }
+  else if((prevState==0)&&(newState==2)){
+    touchState=2;
+  }
+  else if((prevState==0)&&(newState==3)){
+    touchState=3;
+  }
+  else if((prevState==1)&&(newState==0)){
+    touchState=4;
+  }
+  else if((prevState==2)&&(newState==0)){
+    touchState=5;
+  }
+  else if((prevState==3)&&(newState==0)){
+    touchState=6;
+  }
+  else if((prevState==1)&&(newState==3)){
+    touchState=7;
+  }
+  else if((prevState==2)&&(newState==3)){
+    touchState=8;
+  }
+  else if((prevState==3)&&(newState==1)){
+    touchState=9;
+  }
+  else if((prevState==3)&&(newState==2)){
+    touchState=10;
+  }
+  else if(prevState==newState){
+    touchState=0;
+  }
+  prevState=newState;
 
 #if !HAVE_SENSOR
-    if (fakeEventTimeout < 0) {
-      fakeEventTimeout = millis() + pgm_read_dword_near(fakeEventIntervals);
-    }
+  if (fakeEventTimeout < 0) {
+    fakeEventTimeout = millis() + pgm_read_dword_near(fakeEventIntervals);
+  }
 
-    long currentMillis = millis();
-    if ((fakePreviousMillis < fakeEventTimeout) && (fakeEventTimeout <= currentMillis)) {
-      touchState = pgm_read_byte_near(fakeEventSignals + fakeEventIndex);
-      fakeEventIndex++;
-      fakeEventIndex %= (sizeof(fakeEventSignals) / sizeof(prog_uchar));
+  long currentMillis = millis();
+  if ((fakePreviousMillis < fakeEventTimeout) && (fakeEventTimeout <= currentMillis)) {
+    touchState = pgm_read_byte_near(fakeEventSignals + fakeEventIndex);
+    fakeEventIndex++;
+    fakeEventIndex %= (sizeof(fakeEventSignals) / sizeof(prog_uchar));
 
-      fakeEventTimeout += pgm_read_dword_near(fakeEventIntervals + fakeEventIndex);
-    }
-    else {
-      touchState = 0;
-    }
-    fakePreviousMillis = currentMillis;
+    fakeEventTimeout += pgm_read_dword_near(fakeEventIntervals + fakeEventIndex);
+  }
+  else {
+    touchState = 0;
+  }
+  fakePreviousMillis = currentMillis;
 
-    if (touchState) {
-      Serial.print(currentMillis, DEC);
-      PgmPrint("YYY");
-      Serial.println(touchState, DEC);
-    }
+  if (touchState) {
+    Serial.print(currentMillis, DEC);
+    PgmPrint("YYY");
+    Serial.println(touchState, DEC);
+  }
 #endif
 
-    if (touchState) {
-      // Stop timer if new audio is about to play.
-      timerStarted = false;
-      MsTimer2::stop();
+  if (touchState) {
+    // Stop timer if new audio is about to play.
+    timerStarted = false;
+    MsTimer2::stop();
 
-      if (actStart < 0) {
-        actStart = millis();
-      }
-
-      playWave(touchState);
-      delay(20);
+    if (actStart < 0) {
+      actStart = millis();
     }
+
+    playWave(touchState);
+    delay(20);
   }
 
   // Check if there are any new activities from the users.
@@ -574,76 +466,6 @@ void loop() // main program begins
     actEnd = millis();
   }
 
-  // Calculate average.
-  tpValueCalculateAverage(valueA, valueB, aveA, aveB);
-
-  prevdxA = dxA;
-  prevdxB = dxB;
-}
-
-//------------------------------------------------------------------------------
-// calibrate
-void calibrate(byte direction) {
-  calibration += direction;
-  //assure that calibration is in 7 bit range
-  calibration &=0x7f;
-  writeRegister(REGISTER_CAP_DAC_A, _BV(7) | calibration);
-}
-
-//------------------------------------------------------------------------------
-// calibrate
-void calibrate() {
-  calibration = 0;
-
-  PgmPrint("Calibrating CapDAC A");
-
-  long value = readValue();
-
-  while (value>VALUE_UPPER_BOUND && calibration < 128) {
-    PgmPrint(".");
-    calibration++;
-    writeRegister(REGISTER_CAP_DAC_A, _BV(7) | calibration);
-    value = readValue();
-  }
-  PgmPrintln("done");
-}
-
-//------------------------------------------------------------------------------
-// state_A
-void state_A()
-{
-  digitalWrite(nunPin1,HIGH);
-  digitalWrite(nunPin2,LOW);
-  state=LOW;
-}
-
-//------------------------------------------------------------------------------
-// state_B
-void state_B(){
-  digitalWrite(nunPin1, LOW);
-  digitalWrite(nunPin2, HIGH);
-  state=HIGH;
-}
-
-//------------------------------------------------------------------------------
-// readValue
-long readValue() {
-  long ret = 0;
-
-#if HAVE_SENSOR
-  char status = 0;
-  //wait until a conversion is done
-  while (!(status & (_BV(0) | _BV(2)))) {
-    //wait for the next conversion
-    status= readRegister(REGISTER_STATUS);
-  }
-
-  unsigned long value =  readLong(REGISTER_CAP_DATA);
-
-  value >>=8;
-  //we have read one byte to much, now we have to get rid of it
-  ret =  value;
-#endif
-
-  return ret;
+  prevValueA = valueA;
+  prevValueB = valueB;
 }

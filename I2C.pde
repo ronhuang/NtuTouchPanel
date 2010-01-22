@@ -1,3 +1,4 @@
+#include <Wire.h>
 
 void writeRegister(unsigned char r, unsigned char v)
 {
