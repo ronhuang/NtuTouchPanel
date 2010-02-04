@@ -182,6 +182,16 @@ PROGMEM const char *TP_WAVES[] = {
 };
 
 //------------------------------------------------------------------------------
+// Debug
+#define DEBUG 0
+#define DUMP(var) \
+    do {                    \
+        PgmPrint(#var ":"); \
+        Serial.print(var);  \
+        PgmPrint(",");      \
+    } while(0)
+
+//------------------------------------------------------------------------------
 // print error message and halt
 void error(char *str)
 {
@@ -332,6 +342,25 @@ void loop() // main program begins
   // read values
   valueA = digitalRead(SENSOR_PIN_A); // active low
   valueB = digitalRead(SENSOR_PIN_B); // active low
+
+#if DEBUG
+  // Dump all related values.
+  DUMP(valueA);
+  DUMP(valueB);
+  DUMP(senAstate);
+  DUMP(senBstate);
+  DUMP(prevValueA);
+  DUMP(prevValueB);
+  DUMP(sensorA);
+  DUMP(sensorB);
+  DUMP(newState);
+  DUMP(prevState);
+  DUMP(touchState);
+  DUMP(timerStarted);
+  DUMP(actStart);
+  DUMP(actEnd);
+  PgmPrintln("dump");
+#endif
 
   // touch classifier
   if (valueA == LOW && senAstate == LOW) {
