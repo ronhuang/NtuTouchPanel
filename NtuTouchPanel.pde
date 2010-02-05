@@ -35,8 +35,8 @@
 #define nunPin1 8 // Digital pin to select nunchuck1
 #define nunPin2 9 // Digital pin to select nunchuck2
 
-#define SENSOR_PIN_A 13
-#define SENSOR_PIN_B 12
+#define SENSOR_PIN_A 14
+#define SENSOR_PIN_B 15
 
 #define MILLIS_TO_WAIT 5000 // unit in ms.
 
@@ -268,6 +268,9 @@ void setup()
 
   pinMode(SENSOR_PIN_A, INPUT);
   pinMode(SENSOR_PIN_B, INPUT);
+
+  digitalWrite(SENSOR_PIN_A, HIGH);
+  digitalWrite(SENSOR_PIN_B, HIGH);
 
   Serial.begin(9600); // set up baud rate for serial
 
