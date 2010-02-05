@@ -344,7 +344,9 @@ void loop() // main program begins
 
   // read values
   valueA = digitalRead(SENSOR_PIN_A); // active low
+  delay(50);
   valueB = digitalRead(SENSOR_PIN_B); // active low
+  delay(50);
 
 #if DEBUG
   // Dump all related values.
